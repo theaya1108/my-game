@@ -48,7 +48,6 @@
         h1 { 
             margin: 5px 0 5px 0; 
             color: #ffffff; 
-            text-shadow: 0 2px 8px rgba(0,0,0,0.8); 
             font-size: 32px;
             text-align: center;
         }
@@ -59,7 +58,7 @@
             justify-content: space-between;
             align-items: center;
             margin-bottom: 8px;
-            height: 65px; 
+            height: 85px; /* 👑 配合 80x80 按鈕，稍微調高控制列高度確保排版完美 */
             box-sizing: border-box;
             pointer-events: none; 
             position: relative;
@@ -69,7 +68,6 @@
         .status-container { 
             font-size: 20px; 
             font-weight: bold; 
-            text-shadow: 0 2px 8px rgba(0,0,0,0.8);
             display: flex;
             gap: 20px; 
             pointer-events: none; 
@@ -112,16 +110,18 @@
         }
         .btn:active { transform: scale(0.92); }
 
+        /* 👑 修正：重來按鈕正式升級至 80*80 */
         #btn-restart { 
-            width: 60px; 
-            height: 60px; 
+            width: 80px; 
+            height: 80px; 
             background-image: url('btn_restart.png'); 
             animation-delay: 0.5s; 
         }
         
+        /* 暫停按鈕維持 60*60 */
         #btn-pause { 
-            width: 50px; 
-            height: 50px; 
+            width: 60px; 
+            height: 60px; 
             background-image: url('btn_pause.png'); 
         }
 
@@ -159,7 +159,6 @@
             100% { border-top-color: rgba(255, 0, 0, 1); filter: drop-shadow(0 0 8px rgba(255,0,0,0.8)); }
         }
 
-        /* 👑 修正：真正往上移！設定在提示圖案下方的 70px 位置 */
         #deadline-indicator {
             position: absolute;
             top: 70px; 
@@ -285,7 +284,6 @@
         let isGameOver = false;
         let hasUnlockedMaxLevel = false;
 
-        // 👑 修正物理判定高度到真正上方的 70
         const deadlineY = 70; 
         let gameOverTimer = null; 
 
@@ -376,6 +374,7 @@
         document.addEventListener('click', startBackgroundMusic);
         document.addEventListener('touchstart', startBackgroundMusic);
 
+        // 👑 預載入音效物件儲存池，徹底消滅手機音效延遲
         function playMergeSound(level) {
             const config = levels[level];
             const cachedAudio = audioPool[config.sound];
@@ -442,7 +441,6 @@
             Composite.add(engine.world, nextIndicator);
         }
 
-        // 👑 修正：準備落球的高度也要往上縮到 35，保證剛出生時不會誤觸 70px 的警戒線
         function updatePreviewBall(x) {
             if (isPaused || isGameOver) return;
             const config = levels[currentBallLevel];
@@ -470,6 +468,15 @@
                 previewBall.render.sprite.texture = config.img;
                 previewBall.render.sprite.xScale = scaleFactor;
                 previewBall.render.sprite.yScale = scaleFactor;
+            }
+        }
+
+        function updatePauseButtonUI() {
+            const btn = document.getElementById('btn-pause');
+            if (isPaused) {
+                btn.style.backgroundImage = "url('btn_resume.png')";
+            } else {
+                btn.style.backgroundImage = "url('btn_pause.png')";
             }
         }
 
@@ -606,7 +613,7 @@
             hasUnlockedMaxLevel = false;
             document.getElementById('pause-overlay').style.display = 'none';
             document.getElementById('unlock-banner').style.display = 'none';
-            document.getElementById('btn-pause').style.backgroundImage = "url('btn_pause.png')"; 
+            updatePauseButtonUI();
             
             const indicator = document.getElementById('deadline-indicator');
             indicator.className = '';
@@ -673,7 +680,6 @@
                 if (safeX < config.radius + 5) safeX = config.radius + 5;
                 if (safeX > width - (config.radius + 5)) safeX = width - (config.radius + 5);
 
-                // 👑 修正：放球高度同步調整為 35
                 const newItem = createItem(safeX, 35, currentBallLevel);
                 Composite.add(engine.world, newItem);
 
@@ -823,16 +829,16 @@
             if (isGameOver) return; 
             isPaused = !isPaused;
             
+            updatePauseButtonUI();
+
             if (isPaused) {
                 engine.timing.timeScale = 0; 
                 if (bgm) bgm.pause(); 
                 document.getElementById('pause-overlay').style.display = 'flex';
-                document.getElementById('btn-pause').style.backgroundImage = "url('btn_resume.png')";
             } else {
                 engine.timing.timeScale = 1; 
                 if (bgm && isBgmStarted) bgm.play(); 
                 document.getElementById('pause-overlay').style.display = 'none';
-                document.getElementById('btn-pause').style.backgroundImage = "url('btn_pause.png')";
             }
         });
 
