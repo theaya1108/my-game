@@ -2,10 +2,19 @@
 <html lang="zh-TW">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <title>Secret Mini-games</title>
+    <!-- 引入網頁物理引擎 Matter.js -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/matter-js/0.19.0/matter.min.js"></script>
     <style>
+        html, body {
+            width: 100%;
+            height: 100%;
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+        }
+
         body {
             font-family: 'Helvetica Neue', Arial, sans-serif;
             background-image: url('bg_main.png'); 
@@ -15,14 +24,11 @@
             background-color: #1a1a2e; 
             color: #fff;
             display: flex;
-            margin: 0;
-            overflow: hidden;
-            height: 100vh;
             justify-content: center;
             align-items: center;
         }
 
-        /* 👑 核心手機縮放外殼 */
+        /* 👑 終極縮放外殼：固定核心高寬，交給 JS 進行全方位安全比例縮放 */
         #scaler-wrapper {
             display: flex;
             justify-content: center;
@@ -30,6 +36,7 @@
             width: 450px;
             height: 750px;
             transform-origin: center center;
+            position: relative;
         }
 
         #main-wrapper {
@@ -37,10 +44,11 @@
             flex-direction: column;
             align-items: center;
             width: 450px;
+            height: 750px;
         }
 
         h1 { 
-            margin: 0 0 10px 0; 
+            margin: 5px 0 5px 0; 
             color: #ffffff; 
             text-shadow: 0 2px 8px rgba(0,0,0,0.8); 
             font-size: 32px;
@@ -52,7 +60,7 @@
             display: flex;
             justify-content: space-between;
             align-items: center;
-            margin-bottom: 12px;
+            margin-bottom: 8px;
             height: 65px; 
             box-sizing: border-box;
             pointer-events: none; 
@@ -219,7 +227,6 @@
         let bgm = null;
         let isBgmStarted = false;
 
-        // 👑 預載入音效物件儲存池，徹底消滅手機音效延遲
         const audioPool = {};
         let gameOverAudio = null;
 
@@ -231,7 +238,6 @@
         let totalSeconds = 0;
         let timerInterval = null;
 
-        // 10 個等級配置
         const levels = {
             1:  { radius: 22, color: '#ffb6b9', score: 2,   next: 2,  sound: 'sound1.mp3', freq: 261.63, img: 'img1.png',  imgSize: 60 }, 
             2:  { radius: 30, score: 4,   next: 3,  sound: 'sound2.mp3', freq: 293.66, img: 'img2.png',  imgSize: 90 }, 
@@ -240,19 +246,18 @@
             5:  { radius: 54, score: 32,  next: 6,  sound: 'sound5.mp3', freq: 392.00, img: 'img5.png',  imgSize: 180 }, 
             6:  { radius: 62, score: 64,  next: 7,  sound: 'sound6.mp3', freq: 440.00, img: 'img6.png',  imgSize: 220 }, 
             7:  { radius: 72, score: 128, next: 8,  sound: 'sound7.mp3', freq: 493.88, img: 'img7.png',  imgSize: 250 }, 
-            8:  { radius: 82, score: 256, next: 9,  sound: 'sound8.mp3', freq: 523.25, img: 'img9.png',  imgSize: 280 }, 
+            8:  { radius: 82, score: 256, next: 9,  sound: 'sound8.mp3', freq: 523.25, img: 'img8.png',  imgSize: 280 }, 
             9:  { radius: 92, score: 512, next: 10, sound: 'sound9.mp3', freq: 587.33, img: 'img9.png',  imgSize: 310 }, 
             10: { radius: 105, score: 1024, next: null, sound: 'sound10.mp3', freq: 659.25, img: 'img10.png', imgSize: 350 } 
         };
 
-        // 👑 遊戲啟動時立刻預先載入所有音效檔案
         function preloadAudio() {
             for (let lvl in levels) {
                 const src = levels[lvl].sound;
                 if (!audioPool[src]) {
                     const audio = new Audio(src);
                     audio.preload = 'auto';
-                    audio.load(); // 逼迫手機網頁後台先下載
+                    audio.load(); 
                     audioPool[src] = audio;
                 }
             }
@@ -264,18 +269,25 @@
         }
         preloadAudio();
 
+        // 👑 升級版：寬高雙重安全防護縮放公式
         function handleResize() {
             const wrapper = document.getElementById('scaler-wrapper');
-            const windowWidth = window.innerWidth;
-            const windowHeight = window.innerHeight;
+            // 使用 clientWidth/clientHeight 取得排除 iOS 導覽列後的絕對真實可用高度
+            const windowWidth = document.documentElement.clientWidth || window.innerWidth;
+            const windowHeight = document.documentElement.clientHeight || window.innerHeight;
             
+            // 計算寬與高的極限安全比例（上下留 20px, 左右留 16px 安全邊距）
             let scaleX = (windowWidth - 16) / 450;
             let scaleY = (windowHeight - 20) / 750;
+            
+            // 關鍵：強行取兩者之中最嚴格的那個，確保高度也絕對不超出去！
             let finalScale = Math.min(scaleX, scaleY, 1); 
             
             wrapper.style.transform = `scale(${finalScale})`;
         }
+        // 綁定所有視窗變動事件，防止 iOS 工具列縮回時彈跳
         window.addEventListener('resize', handleResize);
+        window.addEventListener('orientationchange', handleResize);
         setTimeout(handleResize, 100);
 
         function startBackgroundMusic() {
@@ -291,7 +303,7 @@
                     document.removeEventListener('click', startBackgroundMusic);
                     document.removeEventListener('touchstart', startBackgroundMusic);
                 }).catch(err => {
-                    console.log("等待手勢解鎖 BGM");
+                    console.log("等待點擊網頁解鎖 BGM");
                 });
             } catch (e) {
                 console.log("BGM 初始化失敗");
@@ -301,13 +313,11 @@
         document.addEventListener('click', startBackgroundMusic);
         document.addEventListener('touchstart', startBackgroundMusic);
 
-        // 👑 零延遲合成音效播放機制
         function playMergeSound(level) {
             const config = levels[level];
             const cachedAudio = audioPool[config.sound];
-            
             if (cachedAudio) {
-                cachedAudio.currentTime = 0; // 瞬間將進度條歸零，可重複重疊播放
+                cachedAudio.currentTime = 0; 
                 cachedAudio.volume = 0.5;
                 cachedAudio.play().catch(e => { playSynthSound(config.freq, 0.3); });
             } else {
@@ -352,7 +362,6 @@
             if (nextIndicator) {
                 Composite.remove(engine.world, nextIndicator);
             }
-            
             const config = levels[nextBallLevel];
             const scaleFactor = (18 * 2) / config.imgSize; 
 
@@ -372,7 +381,6 @@
 
         function updatePreviewBall(x) {
             if (isPaused || isGameOver) return;
-            
             const config = levels[currentBallLevel];
             const scaleFactor = (config.radius * 2) / config.imgSize;
 
@@ -479,7 +487,12 @@
                 const rect = document.getElementById('game-container').getBoundingClientRect();
                 const clientX = e.touches ? e.touches[0].clientX : e.clientX;
                 
-                const currentScale = parseFloat(document.getElementById('scaler-wrapper').style.transform.replace(/[^0-9.]/g, '')) || 1;
+                // 👑 精準計算當前動態縮放值，確保落球點擊位置絕不偏移
+                const matrix = window.getComputedStyle(document.getElementById('scaler-wrapper')).transform;
+                let currentScale = 1;
+                if (matrix && matrix !== 'none') {
+                    currentScale = parseFloat(matrix.split(',')[0].replace('matrix(', '')) || 1;
+                }
                 const clickX = (clientX - rect.left) / currentScale;
                 updatePreviewBall(clickX);
             };
@@ -496,7 +509,11 @@
             const rect = document.getElementById('game-container').getBoundingClientRect();
             const clientX = e.changedTouches ? e.changedTouches[0].clientX : e.clientX;
             
-            const currentScale = parseFloat(document.getElementById('scaler-wrapper').style.transform.replace(/[^0-9.]/g, '')) || 1;
+            const matrix = window.getComputedStyle(document.getElementById('scaler-wrapper')).transform;
+            let currentScale = 1;
+            if (matrix && matrix !== 'none') {
+                currentScale = parseFloat(matrix.split(',')[0].replace('matrix(', '')) || 1;
+            }
             const clickX = (clientX - rect.left) / currentScale;
             
             if (clickX > 0 && clickX < width) {
