@@ -2,7 +2,7 @@
 <html lang="zh-TW">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Secret Mini-games</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/matter-js/0.19.0/matter.min.js"></script>
     <style>
@@ -22,6 +22,16 @@
             align-items: center;
         }
 
+        /* 👑 核心手機縮放黑科技容器 */
+        #scaler-wrapper {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            width: 450px;
+            height: 750px;
+            transform-origin: center center;
+        }
+
         #main-wrapper {
             display: flex;
             flex-direction: column;
@@ -37,7 +47,6 @@
             text-align: center;
         }
         
-        /* 👑 核心修復：讓頂部控制列變成幽靈屬性，絕對不攔截滑鼠點擊 */
         .control-bar {
             width: 100%;
             display: flex;
@@ -46,9 +55,9 @@
             margin-bottom: 12px;
             height: 65px; 
             box-sizing: border-box;
-            pointer-events: none; /* 滑鼠直接穿透 */
+            pointer-events: none; 
             position: relative;
-            z-index: 10; /* 確保按鈕在需要時能被按到 */
+            z-index: 10; 
         }
         
         .status-container { 
@@ -57,7 +66,7 @@
             text-shadow: 0 2px 8px rgba(0,0,0,0.8);
             display: flex;
             gap: 20px; 
-            pointer-events: none; /* 文字方塊絕對不擋點擊 */
+            pointer-events: none; 
         }
         
         /* UI 按鈕動畫 */
@@ -77,7 +86,6 @@
             100% { transform: scale(1.05) rotate(0deg); }
         }
         
-        /* 👑 恢復按鈕本體的點擊功能 */
         .btn {
             border: none;
             cursor: pointer;
@@ -90,7 +98,7 @@
             box-shadow: none; 
             animation: breatheShake 4s ease-in-out infinite; 
             transform-origin: center bottom;
-            pointer-events: auto; /* 讓重來與暫停按鈕恢復可以點擊 */
+            pointer-events: auto; 
         }
         .btn:hover { 
             filter: brightness(1.2); 
@@ -173,22 +181,24 @@
 </head>
 <body>
 
-    <div id="main-wrapper">
-        <h1>Secret Mini-games</h1>
-        
-        <div class="control-bar">
-            <button id="btn-restart" class="btn">重來</button>
-            <div class="status-container">
-                <div>時間: <span id="timer">00:00</span></div>
-                <div>分數: <span id="score">0</span></div>
+    <div id="scaler-wrapper">
+        <div id="main-wrapper">
+            <h1>Secret Mini-games</h1>
+            
+            <div class="control-bar">
+                <button id="btn-restart" class="btn">重來</button>
+                <div class="status-container">
+                    <div>時間: <span id="timer">00:00</span></div>
+                    <div>分數: <span id="score">0</span></div>
+                </div>
+                <button id="btn-pause" class="btn">暫停</button>
             </div>
-            <button id="btn-pause" class="btn">暫停</button>
-        </div>
-        
-        <div id="game-container">
-            <div id="pause-overlay">遊戲暫停 ⏳</div>
-            <div id="deadline-indicator"></div> 
-            <div id="game-area"></div>
+            
+            <div id="game-container">
+                <div id="pause-overlay">遊戲暫停 ⏳</div>
+                <div id="deadline-indicator"></div> 
+                <div id="game-area"></div>
+            </div>
         </div>
     </div>
 
@@ -231,21 +241,44 @@
             10: { radius: 105, score: 1024, next: null, sound: 'sound10.mp3', freq: 659.25, img: 'img10.png', imgSize: 350 } 
         };
 
+        // 👑 動態手機畫面尺寸計算
+        function handleResize() {
+            const wrapper = document.getElementById('scaler-wrapper');
+            const windowWidth = window.innerWidth;
+            const windowHeight = window.innerHeight;
+            
+            // 計算縮放比例（留一點邊距）
+            let scaleX = (windowWidth - 16) / 450;
+            let scaleY = (windowHeight - 20) / 750;
+            let finalScale = Math.min(scaleX, scaleY, 1); // 最高就是 1 倍，不放大
+            
+            wrapper.style.transform = `scale(${finalScale})`;
+        }
+        window.addEventListener('resize', handleResize);
+        setTimeout(handleResize, 100);
+
         function startBackgroundMusic() {
             if (isBgmStarted) return;
             try {
-                bgm = new Audio('bgm.mp3');
-                bgm.loop = true; 
-                bgm.volume = 0.3; 
+                if (!bgm) {
+                    bgm = new Audio('bgm.mp3');
+                    bgm.loop = true; 
+                    bgm.volume = 0.3; 
+                }
                 bgm.play().then(() => {
                     isBgmStarted = true;
+                    document.removeEventListener('click', startBackgroundMusic);
+                    document.removeEventListener('touchstart', startBackgroundMusic);
                 }).catch(err => {
-                    console.log("等待玩家點擊後啟動BGM");
+                    console.log("等待點擊網頁解鎖 BGM");
                 });
             } catch (e) {
-                console.log("BGM 載入失敗");
+                console.log("BGM 初始化失敗");
             }
         }
+
+        document.addEventListener('click', startBackgroundMusic);
+        document.addEventListener('touchstart', startBackgroundMusic);
 
         function playMergeSound(level) {
             const config = levels[level];
@@ -284,8 +317,6 @@
         function getRandomBallLevel() {
             return Math.floor(Math.random() * 4) + 1;
         }
-
-        style = document.createElement('style');
 
         function updateNextIndicator() {
             if (nextIndicator) {
@@ -354,8 +385,6 @@
             }, 1000);
         }
 
-        document.head.appendChild(style);
-
         function stopTimer() {
             if (timerInterval) {
                 clearInterval(timerInterval);
@@ -416,21 +445,33 @@
             setupCollision();
             setupGameLoop(); 
 
-            document.getElementById('game-container').onmousemove = function(e) {
-                const rect = this.getBoundingClientRect();
-                const clickX = e.clientX - rect.left;
+            // 👑 支援手機觸控滑動：讓手指摸哪，球就跟到哪
+            const handleMove = function(e) {
+                const rect = document.getElementById('game-container').getBoundingClientRect();
+                const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+                
+                // 👑 修正縮放後的相對 X 座標計算公式
+                const currentScale = parseFloat(document.getElementById('scaler-wrapper').style.transform.replace(/[^0-9.]/g, '')) || 1;
+                const clickX = (clientX - rect.left) / currentScale;
                 updatePreviewBall(clickX);
             };
+
+            document.getElementById('game-container').onmousemove = handleMove;
+            document.getElementById('game-container').ontouchmove = handleMove;
         }
 
-        // 🌟 點擊監聽
-        document.getElementById('game-container').onclick = function(e) {
+        // 🌟 點擊落球監聽
+        const handleRelease = function(e) {
             startBackgroundMusic();
 
             if (isPaused || isGameOver) return; 
 
-            const rect = this.getBoundingClientRect();
-            const clickX = e.clientX - rect.left;
+            const rect = document.getElementById('game-container').getBoundingClientRect();
+            // 支援手機點擊與滑鼠點擊
+            const clientX = e.changedTouches ? e.changedTouches[0].clientX : e.clientX;
+            
+            const currentScale = parseFloat(document.getElementById('scaler-wrapper').style.transform.replace(/[^0-9.]/g, '')) || 1;
+            const clickX = (clientX - rect.left) / currentScale;
             
             if (clickX > 0 && clickX < width) {
                 const config = levels[currentBallLevel];
@@ -448,6 +489,12 @@
                 updateNextIndicator();
                 updatePreviewBall(safeX);
             }
+        };
+
+        document.getElementById('game-container').onclick = handleRelease;
+        document.getElementById('game-container').ontouchend = function(e) {
+            e.preventDefault(); // 防止手機重複觸發 click
+            handleRelease(e);
         };
 
         function createItem(x, y, level) {
