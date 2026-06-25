@@ -4,7 +4,6 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <title>Secret Mini-games</title>
-    <!-- 引入網頁物理引擎 Matter.js -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/matter-js/0.19.0/matter.min.js"></script>
     <style>
         html, body {
@@ -28,7 +27,6 @@
             align-items: center;
         }
 
-        /* 👑 終極縮放外殼：固定核心高寬，交給 JS 進行全方位安全比例縮放 */
         #scaler-wrapper {
             display: flex;
             justify-content: center;
@@ -155,10 +153,16 @@
             height: 100%;
         }
         
-        /* 頂部白色警戒線 */
+        @keyframes lineBlink {
+            0% { border-top-color: rgba(255, 0, 0, 1); filter: drop-shadow(0 0 8px rgba(255,0,0,0.8)); }
+            50% { border-top-color: rgba(255, 0, 0, 0.1); filter: drop-shadow(0 0 0px rgba(255,0,0,0)); }
+            100% { border-top-color: rgba(255, 0, 0, 1); filter: drop-shadow(0 0 8px rgba(255,0,0,0.8)); }
+        }
+
+        /* 👑 修正：真正往上移！設定在提示圖案下方的 70px 位置 */
         #deadline-indicator {
             position: absolute;
-            top: 95px; 
+            top: 70px; 
             left: 0;
             width: 100%;
             height: 2px;
@@ -167,7 +171,11 @@
             z-index: 2;
         }
 
-        /* 暫停遮罩畫面 */
+        #deadline-indicator.warning {
+            border-top-style: dashed;
+            animation: lineBlink 0.4s linear infinite;
+        }
+
         #pause-overlay {
             position: absolute;
             top: 0;
@@ -184,6 +192,57 @@
             z-index: 5;
             display: none; 
             pointer-events: none; 
+        }
+
+        #fx-canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            z-index: 4;
+        }
+
+        @keyframes unlockBanner {
+            0% { transform: translate(-50%, -150%) scale(0.7); opacity: 0; }
+            15% { transform: translate(-50%, -50%) scale(1.1); opacity: 1; }
+            20% { transform: translate(-50%, -50%) scale(1); opacity: 1; }
+            85% { transform: translate(-50%, -50%) scale(1); opacity: 1; filter: drop-shadow(0 0 25px #ff79c6); }
+            100% { transform: translate(-50%, 100%) scale(0.8); opacity: 0; }
+        }
+
+        #unlock-banner {
+            position: absolute;
+            top: 45%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 85%;
+            background: linear-gradient(135deg, rgba(255,121,198,0.95), rgba(189,147,249,0.95));
+            border: 3px solid #ffffff;
+            border-radius: 15px;
+            box-shadow: 0 0 30px rgba(255,105,180,0.8), inset 0 0 15px rgba(255,255,255,0.6);
+            padding: 20px;
+            text-align: center;
+            box-sizing: border-box;
+            z-index: 20;
+            display: none;
+            pointer-events: none;
+        }
+
+        #unlock-banner h2 {
+            margin: 0 0 8px 0;
+            font-size: 26px;
+            color: #fff;
+            text-shadow: 0 0 10px rgba(0,0,0,0.5), 0 2px 4px rgba(0,0,0,0.6);
+        }
+
+        #unlock-banner p {
+            margin: 0;
+            font-size: 18px;
+            color: #ffffd0;
+            font-weight: bold;
+            text-shadow: 0 1px 3px rgba(0,0,0,0.5);
         }
     </style>
 </head>
@@ -205,6 +264,11 @@
             <div id="game-container">
                 <div id="pause-overlay">遊戲暫停 ⏳</div>
                 <div id="deadline-indicator"></div> 
+                <canvas id="fx-canvas"></canvas>
+                <div id="unlock-banner">
+                    <h2>解鎖第10階 🍷✨</h2>
+                    <p>💖 終極秘密關係 💖</p>
+                </div>
                 <div id="game-area"></div>
             </div>
         </div>
@@ -221,7 +285,8 @@
         let isGameOver = false;
         let hasUnlockedMaxLevel = false;
 
-        const deadlineY = 95; 
+        // 👑 修正物理判定高度到真正上方的 70
+        const deadlineY = 70; 
         let gameOverTimer = null; 
 
         let bgm = null;
@@ -237,6 +302,10 @@
 
         let totalSeconds = 0;
         let timerInterval = null;
+
+        let particles = [];
+        let fxCanvas, fxCtx;
+        let flashOpacity = 0;
 
         const levels = {
             1:  { radius: 22, color: '#ffb6b9', score: 2,   next: 2,  sound: 'sound1.mp3', freq: 261.63, img: 'img1.png',  imgSize: 60 }, 
@@ -269,23 +338,17 @@
         }
         preloadAudio();
 
-        // 👑 升級版：寬高雙重安全防護縮放公式
         function handleResize() {
             const wrapper = document.getElementById('scaler-wrapper');
-            // 使用 clientWidth/clientHeight 取得排除 iOS 導覽列後的絕對真實可用高度
             const windowWidth = document.documentElement.clientWidth || window.innerWidth;
             const windowHeight = document.documentElement.clientHeight || window.innerHeight;
             
-            // 計算寬與高的極限安全比例（上下留 20px, 左右留 16px 安全邊距）
             let scaleX = (windowWidth - 16) / 450;
             let scaleY = (windowHeight - 20) / 750;
-            
-            // 關鍵：強行取兩者之中最嚴格的那個，確保高度也絕對不超出去！
             let finalScale = Math.min(scaleX, scaleY, 1); 
             
             wrapper.style.transform = `scale(${finalScale})`;
         }
-        // 綁定所有視窗變動事件，防止 iOS 工具列縮回時彈跳
         window.addEventListener('resize', handleResize);
         window.addEventListener('orientationchange', handleResize);
         setTimeout(handleResize, 100);
@@ -303,7 +366,7 @@
                     document.removeEventListener('click', startBackgroundMusic);
                     document.removeEventListener('touchstart', startBackgroundMusic);
                 }).catch(err => {
-                    console.log("等待點擊網頁解鎖 BGM");
+                    console.log("等待手勢解鎖 BGM");
                 });
             } catch (e) {
                 console.log("BGM 初始化失敗");
@@ -379,6 +442,7 @@
             Composite.add(engine.world, nextIndicator);
         }
 
+        // 👑 修正：準備落球的高度也要往上縮到 35，保證剛出生時不會誤觸 70px 的警戒線
         function updatePreviewBall(x) {
             if (isPaused || isGameOver) return;
             const config = levels[currentBallLevel];
@@ -389,7 +453,7 @@
             if (safeX > width - (config.radius + 5)) safeX = width - (config.radius + 5);
 
             if (!previewBall) {
-                previewBall = Bodies.circle(safeX, 55, config.radius, {
+                previewBall = Bodies.circle(safeX, 35, config.radius, {
                     isStatic: true,
                     isSensor: true,
                     render: {
@@ -402,7 +466,7 @@
                 });
                 Composite.add(engine.world, previewBall);
             } else {
-                Body.setPosition(previewBall, { x: safeX, y: 55 });
+                Body.setPosition(previewBall, { x: safeX, y: 35 });
                 previewBall.render.sprite.texture = config.img;
                 previewBall.render.sprite.xScale = scaleFactor;
                 previewBall.render.sprite.yScale = scaleFactor;
@@ -430,6 +494,82 @@
             }
         }
 
+        function spawnRomanticCelebration(startX, startY) {
+            flashOpacity = 0.8; 
+            particles = []; 
+            for (let i = 0; i < 60; i++) {
+                const angle = Math.random() * Math.PI * 2;
+                const speed = Math.random() * 6 + 4; 
+                const type = Math.random() > 0.4 ? 'sparkle' : 'heart'; 
+                particles.push({
+                    x: startX,
+                    y: startY,
+                    vx: Math.cos(angle) * speed,
+                    vy: Math.sin(angle) * speed - Math.random() * 3, 
+                    radius: Math.random() * 6 + 4,
+                    alpha: 1,
+                    decay: Math.random() * 0.015 + 0.01, 
+                    color: `hsl(${Math.random() * 40 + 330}, 100%, ${Math.random() * 20 + 70}%)`, 
+                    type: type,
+                    rotation: Math.random() * Math.PI * 2,
+                    rotSpeed: (Math.random() - 0.5) * 0.1
+                });
+            }
+            const banner = document.getElementById('unlock-banner');
+            banner.style.display = 'block';
+            banner.style.animation = 'none';
+            void banner.offsetWidth; 
+            banner.style.animation = 'unlockBanner 4.5s ease-in-out forwards';
+            setTimeout(() => { banner.style.display = 'none'; }, 4500);
+        }
+
+        function drawFX() {
+            fxCtx.clearRect(0, 0, width, height);
+            if (flashOpacity > 0) {
+                fxCtx.fillStyle = `rgba(255, 182, 193, ${flashOpacity})`;
+                fxCtx.fillRect(0, 0, width, height);
+                flashOpacity -= 0.02; 
+            }
+            for (let i = particles.length - 1; i >= 0; i--) {
+                let p = particles[i];
+                p.x += p.vx;
+                p.y += p.vy;
+                p.vy += 0.15; 
+                p.alpha -= p.decay;
+                p.rotation += p.rotSpeed;
+                if (p.alpha <= 0) {
+                    particles.splice(i, 1);
+                    continue;
+                }
+                fxCtx.save();
+                fxCtx.globalAlpha = p.alpha;
+                fxCtx.translate(p.x, p.y);
+                fxCtx.rotate(p.rotation);
+                fxCtx.fillStyle = p.color;
+                fxCtx.shadowBlur = 15;
+                fxCtx.shadowColor = p.color;
+                if (p.type === 'sparkle') {
+                    fxCtx.beginPath();
+                    for (let j = 0; j < 4; j++) {
+                        fxCtx.rotate(Math.PI / 2);
+                        fxCtx.lineTo(0, p.radius * 1.8);
+                        fxCtx.lineTo(p.radius * 0.3, 0);
+                    }
+                    fxCtx.closePath();
+                    fxCtx.fill();
+                } else {
+                    fxCtx.beginPath();
+                    fxCtx.scale(p.radius / 12, p.radius / 12);
+                    fxCtx.translate(-12, -12);
+                    fxCtx.moveTo(12, 5);
+                    fxCtx.bezierCurveTo(12, 4, 11, 2, 8.5, 2, 5.5, 2, 5.5, 6, 5.5, 6, 5.5, 9, 9, 13, 12, 16.5, 15, 13, 18.5, 9, 18.5, 6, 18.5, 6, 18.5, 2, 15.5, 2, 13, 2, 12, 4, 12, 5);
+                    fxCtx.fill();
+                }
+                fxCtx.restore();
+            }
+            requestAnimationFrame(drawFX);
+        }
+
         function initGame() {
             if (engine) {
                 Matter.World.clear(engine.world);
@@ -439,6 +579,13 @@
 
             if (gameOverTimer) clearTimeout(gameOverTimer);
             gameOverTimer = null;
+
+            fxCanvas = document.getElementById('fx-canvas');
+            fxCanvas.width = width;
+            fxCanvas.height = height;
+            fxCtx = fxCanvas.getContext('2d');
+            particles = [];
+            flashOpacity = 0;
 
             engine = Engine.create();
             
@@ -458,8 +605,12 @@
             isGameOver = false; 
             hasUnlockedMaxLevel = false;
             document.getElementById('pause-overlay').style.display = 'none';
+            document.getElementById('unlock-banner').style.display = 'none';
             document.getElementById('btn-pause').style.backgroundImage = "url('btn_pause.png')"; 
-            document.getElementById('deadline-indicator').style.borderTopColor = 'rgba(255, 255, 255, 0.4)';
+            
+            const indicator = document.getElementById('deadline-indicator');
+            indicator.className = '';
+            indicator.style.borderTopColor = 'rgba(255, 255, 255, 0.4)';
 
             if (bgm) bgm.volume = 0.3;
 
@@ -487,7 +638,6 @@
                 const rect = document.getElementById('game-container').getBoundingClientRect();
                 const clientX = e.touches ? e.touches[0].clientX : e.clientX;
                 
-                // 👑 精準計算當前動態縮放值，確保落球點擊位置絕不偏移
                 const matrix = window.getComputedStyle(document.getElementById('scaler-wrapper')).transform;
                 let currentScale = 1;
                 if (matrix && matrix !== 'none') {
@@ -523,7 +673,8 @@
                 if (safeX < config.radius + 5) safeX = config.radius + 5;
                 if (safeX > width - (config.radius + 5)) safeX = width - (config.radius + 5);
 
-                const newItem = createItem(safeX, 55, currentBallLevel);
+                // 👑 修正：放球高度同步調整為 35
+                const newItem = createItem(safeX, 35, currentBallLevel);
                 Composite.add(engine.world, newItem);
 
                 currentBallLevel = nextBallLevel;
@@ -597,7 +748,7 @@
                                     
                                     if (nextLevel === 10 && !hasUnlockedMaxLevel) {
                                         hasUnlockedMaxLevel = true;
-                                        setTimeout(() => alert('天啊！你成功解鎖了第10階：終極秘密關係！💖🍷'), 200);
+                                        spawnRomanticCelebration(newX, newY);
                                     }
                                 }
                             }, 0);
@@ -627,15 +778,22 @@
                     }
                 }
 
+                const indicator = document.getElementById('deadline-indicator');
+
                 if (isOverflowing) {
-                    document.getElementById('deadline-indicator').style.borderTopColor = 'rgba(255, 0, 0, 1)';
+                    if (!indicator.classList.contains('warning')) {
+                        indicator.classList.add('warning');
+                    }
                     if (!gameOverTimer) {
                         gameOverTimer = setTimeout(() => {
                             triggerGameOver();
-                        }, 1500);
+                        }, 8000); 
                     }
                 } else {
-                    document.getElementById('deadline-indicator').style.borderTopColor = 'rgba(255, 255, 255, 0.4)';
+                    if (indicator.classList.contains('warning')) {
+                        indicator.classList.remove('warning');
+                        indicator.style.borderTopColor = 'rgba(255, 255, 255, 0.4)';
+                    }
                     if (gameOverTimer) {
                         clearTimeout(gameOverTimer);
                         gameOverTimer = null;
@@ -679,6 +837,7 @@
         });
 
         initGame();
+        drawFX();
     </script>
 </body>
 </html>
