@@ -22,7 +22,7 @@
             align-items: center;
         }
 
-        /* 👑 核心手機縮放黑科技容器 */
+        /* 👑 核心手機縮放外殼 */
         #scaler-wrapper {
             display: flex;
             justify-content: center;
@@ -219,6 +219,10 @@
         let bgm = null;
         let isBgmStarted = false;
 
+        // 👑 預載入音效物件儲存池，徹底消滅手機音效延遲
+        const audioPool = {};
+        let gameOverAudio = null;
+
         let currentBallLevel = 1;
         let nextBallLevel = 1;
         let previewBall = null;   
@@ -236,21 +240,38 @@
             5:  { radius: 54, score: 32,  next: 6,  sound: 'sound5.mp3', freq: 392.00, img: 'img5.png',  imgSize: 180 }, 
             6:  { radius: 62, score: 64,  next: 7,  sound: 'sound6.mp3', freq: 440.00, img: 'img6.png',  imgSize: 220 }, 
             7:  { radius: 72, score: 128, next: 8,  sound: 'sound7.mp3', freq: 493.88, img: 'img7.png',  imgSize: 250 }, 
-            8:  { radius: 82, score: 256, next: 9,  sound: 'sound8.mp3', freq: 523.25, img: 'img8.png',  imgSize: 280 }, 
+            8:  { radius: 82, score: 256, next: 9,  sound: 'sound8.mp3', freq: 523.25, img: 'img9.png',  imgSize: 280 }, 
             9:  { radius: 92, score: 512, next: 10, sound: 'sound9.mp3', freq: 587.33, img: 'img9.png',  imgSize: 310 }, 
             10: { radius: 105, score: 1024, next: null, sound: 'sound10.mp3', freq: 659.25, img: 'img10.png', imgSize: 350 } 
         };
 
-        // 👑 動態手機畫面尺寸計算
+        // 👑 遊戲啟動時立刻預先載入所有音效檔案
+        function preloadAudio() {
+            for (let lvl in levels) {
+                const src = levels[lvl].sound;
+                if (!audioPool[src]) {
+                    const audio = new Audio(src);
+                    audio.preload = 'auto';
+                    audio.load(); // 逼迫手機網頁後台先下載
+                    audioPool[src] = audio;
+                }
+            }
+            if (!gameOverAudio) {
+                gameOverAudio = new Audio('gameover.mp3');
+                gameOverAudio.preload = 'auto';
+                gameOverAudio.load();
+            }
+        }
+        preloadAudio();
+
         function handleResize() {
             const wrapper = document.getElementById('scaler-wrapper');
             const windowWidth = window.innerWidth;
             const windowHeight = window.innerHeight;
             
-            // 計算縮放比例（留一點邊距）
             let scaleX = (windowWidth - 16) / 450;
             let scaleY = (windowHeight - 20) / 750;
-            let finalScale = Math.min(scaleX, scaleY, 1); // 最高就是 1 倍，不放大
+            let finalScale = Math.min(scaleX, scaleY, 1); 
             
             wrapper.style.transform = `scale(${finalScale})`;
         }
@@ -270,7 +291,7 @@
                     document.removeEventListener('click', startBackgroundMusic);
                     document.removeEventListener('touchstart', startBackgroundMusic);
                 }).catch(err => {
-                    console.log("等待點擊網頁解鎖 BGM");
+                    console.log("等待手勢解鎖 BGM");
                 });
             } catch (e) {
                 console.log("BGM 初始化失敗");
@@ -280,20 +301,29 @@
         document.addEventListener('click', startBackgroundMusic);
         document.addEventListener('touchstart', startBackgroundMusic);
 
+        // 👑 零延遲合成音效播放機制
         function playMergeSound(level) {
             const config = levels[level];
-            const audio = new Audio(config.sound);
-            audio.volume = 0.5;
-            audio.play().catch(e => { playSynthSound(config.freq, 0.3); });
+            const cachedAudio = audioPool[config.sound];
+            
+            if (cachedAudio) {
+                cachedAudio.currentTime = 0; // 瞬間將進度條歸零，可重複重疊播放
+                cachedAudio.volume = 0.5;
+                cachedAudio.play().catch(e => { playSynthSound(config.freq, 0.3); });
+            } else {
+                playSynthSound(config.freq, 0.3);
+            }
         }
 
         function playGameOverSound() {
             if (bgm) bgm.volume = 0.05; 
-            const audio = new Audio('gameover.mp3');
-            audio.volume = 0.6;
-            audio.play().catch(e => { 
-                playSynthSound(150, 0.6); 
-            });
+            if (gameOverAudio) {
+                gameOverAudio.currentTime = 0;
+                gameOverAudio.volume = 0.6;
+                gameOverAudio.play().catch(e => { playSynthSound(150, 0.6); });
+            } else {
+                playSynthSound(150, 0.6);
+            }
         }
 
         function playSynthSound(frequency, duration) {
@@ -445,12 +475,10 @@
             setupCollision();
             setupGameLoop(); 
 
-            // 👑 支援手機觸控滑動：讓手指摸哪，球就跟到哪
             const handleMove = function(e) {
                 const rect = document.getElementById('game-container').getBoundingClientRect();
                 const clientX = e.touches ? e.touches[0].clientX : e.clientX;
                 
-                // 👑 修正縮放後的相對 X 座標計算公式
                 const currentScale = parseFloat(document.getElementById('scaler-wrapper').style.transform.replace(/[^0-9.]/g, '')) || 1;
                 const clickX = (clientX - rect.left) / currentScale;
                 updatePreviewBall(clickX);
@@ -460,14 +488,12 @@
             document.getElementById('game-container').ontouchmove = handleMove;
         }
 
-        // 🌟 點擊落球監聽
         const handleRelease = function(e) {
             startBackgroundMusic();
 
             if (isPaused || isGameOver) return; 
 
             const rect = document.getElementById('game-container').getBoundingClientRect();
-            // 支援手機點擊與滑鼠點擊
             const clientX = e.changedTouches ? e.changedTouches[0].clientX : e.clientX;
             
             const currentScale = parseFloat(document.getElementById('scaler-wrapper').style.transform.replace(/[^0-9.]/g, '')) || 1;
@@ -493,7 +519,7 @@
 
         document.getElementById('game-container').onclick = handleRelease;
         document.getElementById('game-container').ontouchend = function(e) {
-            e.preventDefault(); // 防止手機重複觸發 click
+            e.preventDefault(); 
             handleRelease(e);
         };
 
