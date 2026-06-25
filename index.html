@@ -1,0 +1,594 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Secret Mini-games</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/matter-js/0.19.0/matter.min.js"></script>
+    <style>
+        body {
+            font-family: 'Helvetica Neue', Arial, sans-serif;
+            background-image: url('bg_main.png'); 
+            background-size: cover;
+            background-position: center;
+            background-repeat: no-repeat;
+            background-color: #1a1a2e; 
+            color: #fff;
+            display: flex;
+            margin: 0;
+            overflow: hidden;
+            height: 100vh;
+            justify-content: center;
+            align-items: center;
+        }
+
+        #main-wrapper {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            width: 450px;
+        }
+
+        h1 { 
+            margin: 0 0 10px 0; 
+            color: #ffffff; 
+            text-shadow: 0 2px 8px rgba(0,0,0,0.8); 
+            font-size: 32px;
+            text-align: center;
+        }
+        
+        /* 👑 核心修復：讓頂部控制列變成幽靈屬性，絕對不攔截滑鼠點擊 */
+        .control-bar {
+            width: 100%;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 12px;
+            height: 65px; 
+            box-sizing: border-box;
+            pointer-events: none; /* 滑鼠直接穿透 */
+            position: relative;
+            z-index: 10; /* 確保按鈕在需要時能被按到 */
+        }
+        
+        .status-container { 
+            font-size: 20px; 
+            font-weight: bold; 
+            text-shadow: 0 2px 8px rgba(0,0,0,0.8);
+            display: flex;
+            gap: 20px; 
+            pointer-events: none; /* 文字方塊絕對不擋點擊 */
+        }
+        
+        /* UI 按鈕動畫 */
+        @keyframes breatheShake {
+            0% { transform: translateY(0px) rotate(0deg); }
+            50% { transform: translateY(-4px) rotate(2deg); }
+            100% { transform: translateY(0px) rotate(0deg); }
+        }
+
+        @keyframes jellyShake {
+            0% { transform: scale(1) rotate(0deg); }
+            15% { transform: scale(1.15) rotate(-6deg); }
+            30% { transform: scale(1.05) rotate(5deg); }
+            45% { transform: scale(1.1) rotate(-3deg); }
+            60% { transform: scale(1.02) rotate(2deg); }
+            75% { transform: scale(1.05) rotate(-1deg); }
+            100% { transform: scale(1.05) rotate(0deg); }
+        }
+        
+        /* 👑 恢復按鈕本體的點擊功能 */
+        .btn {
+            border: none;
+            cursor: pointer;
+            background-size: contain; 
+            background-position: center;
+            background-repeat: no-repeat;
+            background-color: transparent; 
+            color: transparent; 
+            overflow: hidden;
+            box-shadow: none; 
+            animation: breatheShake 4s ease-in-out infinite; 
+            transform-origin: center bottom;
+            pointer-events: auto; /* 讓重來與暫停按鈕恢復可以點擊 */
+        }
+        .btn:hover { 
+            filter: brightness(1.2); 
+            animation: jellyShake 0.6s ease-in-out forwards; 
+        }
+        .btn:active { transform: scale(0.92); }
+
+        #btn-restart { 
+            width: 60px; 
+            height: 60px; 
+            background-image: url('btn_restart.png'); 
+            animation-delay: 0.5s; 
+        }
+        
+        #btn-pause { 
+            width: 50px; 
+            height: 50px; 
+            background-image: url('btn_pause.png'); 
+        }
+
+        /* 遊戲區域框容器 */
+        #game-container {
+            position: relative;
+            width: 450px;
+            height: 650px;
+            background-image: url('bg_game.png'); 
+            background-size: cover;
+            background-position: center;
+            border: 4px solid #ffffff; 
+            border-radius: 10px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.6);
+            box-sizing: border-box;
+            overflow: hidden;
+            cursor: pointer;
+        }
+        
+        #game-area canvas {
+            background: transparent !important;
+            width: 100% !important;
+            height: 100% !important;
+            display: block;
+        }
+        
+        #game-area {
+            width: 100%;
+            height: 100%;
+        }
+        
+        /* 頂部白色警戒線 */
+        #deadline-indicator {
+            position: absolute;
+            top: 95px; 
+            left: 0;
+            width: 100%;
+            height: 2px;
+            border-top: 2px dashed rgba(255, 255, 255, 0.4);
+            pointer-events: none;
+            z-index: 2;
+        }
+
+        /* 暫停遮罩畫面 */
+        #pause-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(26, 26, 46, 0.8);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-size: 32px;
+            font-weight: bold;
+            color: #ffffff;
+            z-index: 5;
+            display: none; 
+            pointer-events: none; 
+        }
+    </style>
+</head>
+<body>
+
+    <div id="main-wrapper">
+        <h1>Secret Mini-games</h1>
+        
+        <div class="control-bar">
+            <button id="btn-restart" class="btn">重來</button>
+            <div class="status-container">
+                <div>時間: <span id="timer">00:00</span></div>
+                <div>分數: <span id="score">0</span></div>
+            </div>
+            <button id="btn-pause" class="btn">暫停</button>
+        </div>
+        
+        <div id="game-container">
+            <div id="pause-overlay">遊戲暫停 ⏳</div>
+            <div id="deadline-indicator"></div> 
+            <div id="game-area"></div>
+        </div>
+    </div>
+
+    <script>
+        const { Engine, Render, Runner, Bodies, Composite, Body, Events } = Matter;
+        let engine, render, runner;
+        
+        const width = 442; 
+        const height = 642; 
+        let score = 0;
+        let isPaused = false;
+        let isGameOver = false;
+        let hasUnlockedMaxLevel = false;
+
+        const deadlineY = 95; 
+        let gameOverTimer = null; 
+
+        let bgm = null;
+        let isBgmStarted = false;
+
+        let currentBallLevel = 1;
+        let nextBallLevel = 1;
+        let previewBall = null;   
+        let nextIndicator = null; 
+
+        let totalSeconds = 0;
+        let timerInterval = null;
+
+        // 10 個等級配置
+        const levels = {
+            1:  { radius: 22, color: '#ffb6b9', score: 2,   next: 2,  sound: 'sound1.mp3', freq: 261.63, img: 'img1.png',  imgSize: 60 }, 
+            2:  { radius: 30, score: 4,   next: 3,  sound: 'sound2.mp3', freq: 293.66, img: 'img2.png',  imgSize: 90 }, 
+            3:  { radius: 38, score: 8,   next: 4,  sound: 'sound3.mp3', freq: 329.63, img: 'img3.png',  imgSize: 120 }, 
+            4:  { radius: 46, score: 16,  next: 5,  sound: 'sound4.mp3', freq: 349.23, img: 'img4.png',  imgSize: 150 }, 
+            5:  { radius: 54, score: 32,  next: 6,  sound: 'sound5.mp3', freq: 392.00, img: 'img5.png',  imgSize: 180 }, 
+            6:  { radius: 62, score: 64,  next: 7,  sound: 'sound6.mp3', freq: 440.00, img: 'img6.png',  imgSize: 220 }, 
+            7:  { radius: 72, score: 128, next: 8,  sound: 'sound7.mp3', freq: 493.88, img: 'img7.png',  imgSize: 250 }, 
+            8:  { radius: 82, score: 256, next: 9,  sound: 'sound8.mp3', freq: 523.25, img: 'img8.png',  imgSize: 280 }, 
+            9:  { radius: 92, score: 512, next: 10, sound: 'sound9.mp3', freq: 587.33, img: 'img9.png',  imgSize: 310 }, 
+            10: { radius: 105, score: 1024, next: null, sound: 'sound10.mp3', freq: 659.25, img: 'img10.png', imgSize: 350 } 
+        };
+
+        function startBackgroundMusic() {
+            if (isBgmStarted) return;
+            try {
+                bgm = new Audio('bgm.mp3');
+                bgm.loop = true; 
+                bgm.volume = 0.3; 
+                bgm.play().then(() => {
+                    isBgmStarted = true;
+                }).catch(err => {
+                    console.log("等待玩家點擊後啟動BGM");
+                });
+            } catch (e) {
+                console.log("BGM 載入失敗");
+            }
+        }
+
+        function playMergeSound(level) {
+            const config = levels[level];
+            const audio = new Audio(config.sound);
+            audio.volume = 0.5;
+            audio.play().catch(e => { playSynthSound(config.freq, 0.3); });
+        }
+
+        function playGameOverSound() {
+            if (bgm) bgm.volume = 0.05; 
+            const audio = new Audio('gameover.mp3');
+            audio.volume = 0.6;
+            audio.play().catch(e => { 
+                playSynthSound(150, 0.6); 
+            });
+        }
+
+        function playSynthSound(frequency, duration) {
+            try {
+                const AudioContext = window.WindowsAudioContext || window.AudioContext || window.webkitAudioContext;
+                if (!AudioContext) return;
+                const ctx = new AudioContext();
+                const osc = ctx.createOscillator();
+                const gain = ctx.createGain();
+                osc.type = 'sine'; 
+                osc.frequency.setValueAtTime(frequency, ctx.currentTime);
+                gain.gain.setValueAtTime(0.3, ctx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + duration);
+                osc.connect(gain);
+                gain.connect(ctx.destination);
+                osc.start();
+                osc.stop(ctx.currentTime + duration);
+            } catch(err) { console.log("音訊建立失敗"); }
+        }
+
+        function getRandomBallLevel() {
+            return Math.floor(Math.random() * 4) + 1;
+        }
+
+        style = document.createElement('style');
+
+        function updateNextIndicator() {
+            if (nextIndicator) {
+                Composite.remove(engine.world, nextIndicator);
+            }
+            
+            const config = levels[nextBallLevel];
+            const scaleFactor = (18 * 2) / config.imgSize; 
+
+            nextIndicator = Bodies.circle(width - 40, 35, 18, {
+                isStatic: true,
+                isSensor: true, 
+                render: {
+                    sprite: {
+                        texture: config.img,
+                        xScale: scaleFactor,
+                        yScale: scaleFactor
+                    }
+                }
+            });
+            Composite.add(engine.world, nextIndicator);
+        }
+
+        function updatePreviewBall(x) {
+            if (isPaused || isGameOver) return;
+            
+            const config = levels[currentBallLevel];
+            const scaleFactor = (config.radius * 2) / config.imgSize;
+
+            let safeX = x;
+            if (safeX < config.radius + 5) safeX = config.radius + 5;
+            if (safeX > width - (config.radius + 5)) safeX = width - (config.radius + 5);
+
+            if (!previewBall) {
+                previewBall = Bodies.circle(safeX, 55, config.radius, {
+                    isStatic: true,
+                    isSensor: true,
+                    render: {
+                        sprite: {
+                            texture: config.img,
+                            xScale: scaleFactor,
+                            yScale: scaleFactor
+                        }
+                    }
+                });
+                Composite.add(engine.world, previewBall);
+            } else {
+                Body.setPosition(previewBall, { x: safeX, y: 55 });
+                previewBall.render.sprite.texture = config.img;
+                previewBall.render.sprite.xScale = scaleFactor;
+                previewBall.render.sprite.yScale = scaleFactor;
+            }
+        }
+
+        function startTimer() {
+            stopTimer(); 
+            timerInterval = setInterval(() => {
+                if (!isPaused && !isGameOver) {
+                    totalSeconds++;
+                    const minutes = Math.floor(totalSeconds / 60);
+                    const seconds = totalSeconds % 60;
+                    const formattedMin = String(minutes).padStart(2, '0');
+                    const formattedSec = String(seconds).padStart(2, '0');
+                    document.getElementById('timer').innerText = `${formattedMin}:${formattedSec}`;
+                }
+            }, 1000);
+        }
+
+        document.head.appendChild(style);
+
+        function stopTimer() {
+            if (timerInterval) {
+                clearInterval(timerInterval);
+                timerInterval = null;
+            }
+        }
+
+        function initGame() {
+            if (engine) {
+                Matter.World.clear(engine.world);
+                Matter.Engine.clear(engine);
+                document.getElementById('game-area').innerHTML = '';
+            }
+
+            if (gameOverTimer) clearTimeout(gameOverTimer);
+            gameOverTimer = null;
+
+            engine = Engine.create();
+            
+            render = Render.create({
+                element: document.getElementById('game-area'),
+                engine: engine,
+                options: { width: width, height: height, wireframes: false, background: 'transparent' } 
+            });
+
+            Render.run(render);
+            runner = Runner.create();
+            Runner.run(runner, engine);
+
+            score = 0;
+            document.getElementById('score').innerText = score;
+            isPaused = false;
+            isGameOver = false; 
+            hasUnlockedMaxLevel = false;
+            document.getElementById('pause-overlay').style.display = 'none';
+            document.getElementById('btn-pause').style.backgroundImage = "url('btn_pause.png')"; 
+            document.getElementById('deadline-indicator').style.borderTopColor = 'rgba(255, 255, 255, 0.4)';
+
+            if (bgm) bgm.volume = 0.3;
+
+            const ground = Bodies.rectangle(width / 2, height + 30, width, 60, { isStatic: true, render: { visible: false } });
+            const leftWall = Bodies.rectangle(-30, height / 2, 60, height, { isStatic: true, render: { visible: false } });
+            const rightWall = Bodies.rectangle(width + 30, height / 2, 60, height, { isStatic: true, render: { visible: false } });
+            Composite.add(engine.world, [ground, leftWall, rightWall]);
+
+            currentBallLevel = getRandomBallLevel();
+            nextBallLevel = getRandomBallLevel();
+            previewBall = null;
+            nextIndicator = null;
+
+            updateNextIndicator();
+            updatePreviewBall(width / 2); 
+
+            totalSeconds = 0;
+            document.getElementById('timer').innerText = "00:00";
+            startTimer();
+
+            setupCollision();
+            setupGameLoop(); 
+
+            document.getElementById('game-container').onmousemove = function(e) {
+                const rect = this.getBoundingClientRect();
+                const clickX = e.clientX - rect.left;
+                updatePreviewBall(clickX);
+            };
+        }
+
+        // 🌟 點擊監聽
+        document.getElementById('game-container').onclick = function(e) {
+            startBackgroundMusic();
+
+            if (isPaused || isGameOver) return; 
+
+            const rect = this.getBoundingClientRect();
+            const clickX = e.clientX - rect.left;
+            
+            if (clickX > 0 && clickX < width) {
+                const config = levels[currentBallLevel];
+                
+                let safeX = clickX;
+                if (safeX < config.radius + 5) safeX = config.radius + 5;
+                if (safeX > width - (config.radius + 5)) safeX = width - (config.radius + 5);
+
+                const newItem = createItem(safeX, 55, currentBallLevel);
+                Composite.add(engine.world, newItem);
+
+                currentBallLevel = nextBallLevel;
+                nextBallLevel = getRandomBallLevel();
+
+                updateNextIndicator();
+                updatePreviewBall(safeX);
+            }
+        };
+
+        function createItem(x, y, level) {
+            const config = levels[level];
+            const scaleFactor = (config.radius * 2) / config.imgSize;
+
+            const item = Bodies.circle(x, y, config.radius, {
+                restitution: 0.2,
+                friction: 0.1,
+                label: 'game-item',
+                render: { 
+                    sprite: {
+                        texture: config.img,
+                        xScale: scaleFactor,
+                        yScale: scaleFactor
+                    }
+                }
+            });
+            item.gameLevel = Number(level);
+            item.spawnTime = Date.now(); 
+            return item;
+        }
+
+        function setupCollision() {
+            Events.on(engine, 'collisionStart', (event) => {
+                if (isPaused || isGameOver) return;
+                const pairs = event.pairs;
+                
+                pairs.forEach((pair) => {
+                    const bodyA = pair.bodyA;
+                    const bodyB = pair.bodyB;
+
+                    if (bodyA.label === 'game-item' && bodyB.label === 'game-item') {
+                        if (bodyA.gameLevel === bodyB.gameLevel && !bodyA.isDead && !bodyB.isDead) {
+                            
+                            const currentLevel = bodyA.gameLevel;
+                            const nextLevel = levels[currentLevel].next;
+
+                            bodyA.isDead = true;
+                            bodyB.isDead = true;
+
+                            const newX = (bodyA.position.x + bodyB.position.x) / 2;
+                            const newY = (bodyA.position.y + bodyB.position.y) / 2;
+
+                            score += levels[currentLevel].score;
+                            document.getElementById('score').innerText = score;
+
+                            playMergeSound(currentLevel);
+
+                            setTimeout(() => {
+                                Composite.remove(engine.world, bodyA);
+                                Composite.remove(engine.world, bodyB);
+
+                                if (nextLevel) {
+                                    const upgradedItem = createItem(newX, newY, nextLevel);
+                                    Composite.add(engine.world, upgradedItem);
+                                    
+                                    if (nextLevel === 10 && !hasUnlockedMaxLevel) {
+                                        hasUnlockedMaxLevel = true;
+                                        setTimeout(() => alert('天啊！你成功解鎖了第10階：終極秘密關係！💖🍷'), 200);
+                                    }
+                                }
+                            }, 0);
+                        }
+                    }
+                });
+            });
+        }
+
+        function setupGameLoop() {
+            Events.on(engine, 'afterUpdate', () => {
+                if (isPaused || isGameOver) return;
+
+                const allBodies = Composite.allBodies(engine.world);
+                let isOverflowing = false;
+
+                for (let body of allBodies) {
+                    if (body.label === 'game-item') {
+                        if (Date.now() - body.spawnTime < 1500) continue;
+
+                        const itemTopEdge = body.position.y - body.circleRadius;
+
+                        if (itemTopEdge < deadlineY) {
+                            isOverflowing = true;
+                            break;
+                        }
+                    }
+                }
+
+                if (isOverflowing) {
+                    document.getElementById('deadline-indicator').style.borderTopColor = 'rgba(255, 0, 0, 1)';
+                    if (!gameOverTimer) {
+                        gameOverTimer = setTimeout(() => {
+                            triggerGameOver();
+                        }, 1500);
+                    }
+                } else {
+                    document.getElementById('deadline-indicator').style.borderTopColor = 'rgba(255, 255, 255, 0.4)';
+                    if (gameOverTimer) {
+                        clearTimeout(gameOverTimer);
+                        gameOverTimer = null;
+                    }
+                }
+            });
+        }
+
+        function triggerGameOver() {
+            isGameOver = true;
+            engine.timing.timeScale = 0; 
+            stopTimer(); 
+            playGameOverSound(); 
+            
+            setTimeout(() => {
+                alert("i'm king of the game");
+            }, 100);
+        }
+
+        document.getElementById('btn-restart').addEventListener('click', (e) => {
+            e.stopPropagation(); 
+            initGame(); 
+        });
+
+        document.getElementById('btn-pause').addEventListener('click', (e) => {
+            e.stopPropagation(); 
+            if (isGameOver) return; 
+            isPaused = !isPaused;
+            
+            if (isPaused) {
+                engine.timing.timeScale = 0; 
+                if (bgm) bgm.pause(); 
+                document.getElementById('pause-overlay').style.display = 'flex';
+                document.getElementById('btn-pause').style.backgroundImage = "url('btn_resume.png')";
+            } else {
+                engine.timing.timeScale = 1; 
+                if (bgm && isBgmStarted) bgm.play(); 
+                document.getElementById('pause-overlay').style.display = 'none';
+                document.getElementById('btn-pause').style.backgroundImage = "url('btn_pause.png')";
+            }
+        });
+
+        initGame();
+    </script>
+</body>
+</html>
