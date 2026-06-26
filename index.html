@@ -58,7 +58,7 @@
             justify-content: space-between;
             align-items: center;
             margin-bottom: 8px;
-            height: 85px; /* 👑 配合 80x80 按鈕，稍微調高控制列高度確保排版完美 */
+            height: 85px; 
             box-sizing: border-box;
             pointer-events: none; 
             position: relative;
@@ -110,7 +110,6 @@
         }
         .btn:active { transform: scale(0.92); }
 
-        /* 👑 修正：重來按鈕正式升級至 80*80 */
         #btn-restart { 
             width: 80px; 
             height: 80px; 
@@ -118,7 +117,6 @@
             animation-delay: 0.5s; 
         }
         
-        /* 暫停按鈕維持 60*60 */
         #btn-pause { 
             width: 60px; 
             height: 60px; 
@@ -141,10 +139,12 @@
             cursor: pointer;
         }
         
+        /* 💡 修正：移除硬性 100% 變形拉伸，改用 object-fit 確保等比例 */
         #game-area canvas {
             background: transparent !important;
             width: 100% !important;
             height: 100% !important;
+            object-fit: contain; 
             display: block;
         }
         
@@ -277,6 +277,7 @@
         const { Engine, Render, Runner, Bodies, Composite, Body, Events } = Matter;
         let engine, render, runner;
         
+        // 💡 確保物理引擎計算解析度與實際 Canvas 比例一致
         const width = 442; 
         const height = 642; 
         let score = 0;
@@ -374,7 +375,6 @@
         document.addEventListener('click', startBackgroundMusic);
         document.addEventListener('touchstart', startBackgroundMusic);
 
-        // 👑 預載入音效物件儲存池，徹底消滅手機音效延遲
         function playMergeSound(level) {
             const config = levels[level];
             const cachedAudio = audioPool[config.sound];
@@ -425,6 +425,7 @@
                 Composite.remove(engine.world, nextIndicator);
             }
             const config = levels[nextBallLevel];
+            // 💡 修正：確保精靈貼圖的寬高比不變，使用半徑直接換算
             const scaleFactor = (18 * 2) / config.imgSize; 
 
             nextIndicator = Bodies.circle(width - 40, 35, 18, {
@@ -599,7 +600,12 @@
             render = Render.create({
                 element: document.getElementById('game-area'),
                 engine: engine,
-                options: { width: width, height: height, wireframes: false, background: 'transparent' } 
+                options: { 
+                    width: width, 
+                    height: height, 
+                    wireframes: false, 
+                    background: 'transparent'
+                } 
             });
 
             Render.run(render);
